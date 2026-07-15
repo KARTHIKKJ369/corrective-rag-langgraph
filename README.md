@@ -1,6 +1,6 @@
 # Recall
 
-Local retrieval-augmented generation (RAG) playground for Lilian Weng's "LLM Powered Autonomous Agents" article.
+
 
 It ingests content into a local Chroma vector store, retrieves relevant chunks with MMR search, grades them with a LangGraph loop, and asks an Ollama-hosted chat model to answer using only the retrieved context.
 
