@@ -1,127 +1,307 @@
 # Recall
 
+> A local-first implementation of **Corrective Retrieval-Augmented Generation (CRAG)** powered by **LangGraph, ChromaDB, and Ollama**.
 
+Recall is an experimental AI retrieval system that improves traditional Retrieval-Augmented Generation by **evaluating retrieved context before generation**. Instead of blindly passing retrieved documents to the language model, Recall introduces a corrective feedback loop that grades document relevance, rewrites weak queries, and retries retrieval until sufficient evidence is collected.
 
-It ingests content into a local Chroma vector store, retrieves relevant chunks with MMR search, grades them with a LangGraph loop, and asks an Ollama-hosted chat model to answer using only the retrieved context.
+Everything runs locally using Ollama and ChromaDB, making Recall suitable for privacy-focused AI applications, research, and experimentation.
 
-> [!NOTE]
-> This repository is intentionally small and local-first. It is best suited for experimenting with ingestion, chunking, retrieval, and answer generation rather than serving as a production app.
+---
 
-## What's included
+## Features
 
-- Header-aware ingestion for web pages, PDFs, Markdown, and text files.
-- A rebuild script that recreates the local Chroma database from scratch.
-- A LangGraph workflow that retrieves, grades, rewrites, and generates answers.
-- Utilities for inspecting chunking behavior and testing older OpenRouter experiments.
+- Local-first architecture
+- Corrective RAG (CRAG) workflow
+- LangGraph state machine orchestration
+- Maximum Marginal Relevance (MMR) retrieval
+- Automatic relevance grading
+- Query rewriting when retrieval quality is poor
+- Web, PDF, Markdown and Text ingestion
+- Persistent Chroma vector database
+- Modular ingestion pipeline
+- Configurable local LLMs through Ollama
+- Environment-driven configuration
 
-## How it works
+---
 
-1. `retriver.py` loads one or more sources and rebuilds `chroma_db/`.
-2. `rag_ingest.py` parses each source, preserves headings where possible, and splits long sections into chunks.
-3. `main.py` runs a graph with three core stages:
-   - retrieve documents
-   - grade relevance
-   - rewrite the query or generate the final answer
-4. `main.py` sends the final context to Ollama and prints the response in the terminal.
+# Architecture
 
-## Project layout
+```text
+                User Question
+                      │
+                      ▼
+              Vector Retrieval
+                      │
+                      ▼
+          Relevance Grading (LLM)
+              │             │
+      Relevant          Not Relevant
+          │                  │
+          ▼                  ▼
+    Answer Generation   Query Rewrite
+          ▲                  │
+          └──────────────────┘
+                 Retry
+```
 
-- `main.py` - main RAG workflow and CLI entry point.
-- `retriver.py` - vector store rebuild script and retrieval sanity check.
-- `rag_ingest.py` - shared source loading and chunking helpers.
-- `ingest.py` - chunk inspection helper without writing Chroma.
-- `debug_openrouter.py` - quick OpenRouter connectivity check.
-- `agent.py` - older LangGraph/OpenRouter prototype kept for reference.
+The system continuously improves retrieval quality before allowing answer generation.
 
-## Prerequisites
+---
 
-- Python 3.13 or newer.
-- A virtual environment.
-- Ollama running locally if you want to use the default answer path.
-- Network access the first time you ingest the sample article or download embedding/model weights.
+# Technology Stack
 
-> [!TIP]
-> The default configuration points Ollama at `http://localhost:11434` and uses `gemma4:12b` for generation. You can override both in `.env`.
+| Component | Technology |
+|------------|------------|
+| Orchestration | LangGraph |
+| LLM | Ollama |
+| Embeddings | Sentence Transformers |
+| Vector Database | ChromaDB |
+| Parsing | LangChain Community |
+| Language | Python 3.13 |
 
-## Setup
+---
 
-Create and activate the virtual environment, then install dependencies:
+# Project Structure
+
+```
+.
+├── main.py                 # Main CRAG workflow
+├── retriver.py             # Build vector database
+├── rag_ingest.py           # Source ingestion
+├── ingest.py               # Chunk inspection
+├── debug_openrouter.py     # OpenRouter testing
+├── agent.py                # Legacy prototype
+├── chroma_db/              # Local vector store
+├── requirements.txt
+└── .env.example
+```
+
+---
+
+# CRAG Pipeline
+
+## 1. Document Ingestion
+
+Supported sources include:
+
+- Web pages
+- PDF documents
+- Markdown
+- Plain text
+
+Documents are parsed while preserving structural headers whenever possible before semantic chunking.
+
+---
+
+## 2. Embedding
+
+Chunks are embedded using
+
+```
+sentence-transformers/all-MiniLM-L6-v2
+```
+
+and stored inside ChromaDB.
+
+---
+
+## 3. Retrieval
+
+The retriever performs
+
+- similarity search
+- Maximum Marginal Relevance (MMR)
+
+to retrieve diverse and relevant context.
+
+---
+
+## 4. Relevance Grading
+
+Unlike conventional RAG systems, retrieved documents are evaluated by a lightweight LLM.
+
+If retrieval quality is sufficient:
+
+```
+Retrieve
+      ↓
+Generate
+```
+
+Otherwise:
+
+```
+Retrieve
+      ↓
+Grade
+      ↓
+Rewrite Query
+      ↓
+Retrieve Again
+```
+
+This corrective loop reduces hallucinations caused by poor retrieval.
+
+---
+
+## 5. Generation
+
+Once relevant evidence has been collected, the final answer is generated using a local Ollama model.
+
+The model is instructed to answer **only from retrieved context**, reducing unsupported responses.
+
+---
+
+# Installation
+
+Clone the repository
+
+```bash
+git clone https://github.com/<username>/recall.git
+cd recall
+```
+
+Create a virtual environment
 
 ```bash
 python -m venv recall-env
 source recall-env/bin/activate
+```
+
+Install dependencies
+
+```bash
 pip install -r requirements.txt
 ```
 
-Optional: copy the example environment file if you want to override settings or use the OpenRouter debug scripts.
+Copy environment variables
 
 ```bash
 cp .env.example .env
 ```
 
-## Configuration
-
-The main runtime settings are read from environment variables. The most useful ones are:
-
-| Variable | Purpose | Default |
-| --- | --- | --- |
-| `ARTICLE_URL` | Source article used by the default ingest script | `https://lilianweng.github.io/posts/2023-06-23-agent/` |
-| `CHROMA_DIR` | Location of the local vector store | `./chroma_db` |
-| `EMBEDDING_MODEL` | Hugging Face embedding model | `sentence-transformers/all-MiniLM-L6-v2` |
-| `OLLAMA_BASE_URL` | Ollama server URL | `http://localhost:11434` |
-| `OLLAMA_MODEL` | Fallback model used when specific grade/generate models are unset | `gemma4:12b` |
-| `OLLAMA_GRADE_MODEL` | Smaller model used for relevance grading | inherits `OLLAMA_MODEL` |
-| `OLLAMA_GENERATE_MODEL` | Model used for the final answer | inherits `OLLAMA_MODEL` |
-| `RETRIEVER_K` | Number of documents kept after retrieval | `5` |
-| `RETRIEVER_FETCH_K` | Number of candidates fetched before MMR selection | `15` |
-| `RETRIEVER_LAMBDA_MULT` | MMR diversity trade-off | `0.5` |
-| `MAX_REWRITE_LOOPS` | Safety limit for query rewriting | `3` |
-
-## Usage
-
-Rebuild the local vector database:
+Start Ollama
 
 ```bash
-source recall-env/bin/activate
+ollama serve
+```
+
+Pull your preferred model
+
+```bash
+ollama pull gemma4:12b
+```
+
+---
+
+# Configuration
+
+| Variable | Description |
+|-----------|-------------|
+| ARTICLE_URL | Default ingestion source |
+| CHROMA_DIR | Vector database location |
+| EMBEDDING_MODEL | Embedding model |
+| OLLAMA_MODEL | Generation model |
+| RETRIEVER_K | Retrieved documents |
+| FETCH_K | Initial retrieval candidates |
+| MAX_REWRITE_LOOPS | Maximum retry attempts |
+
+---
+
+# Usage
+
+## Build Vector Database
+
+```bash
 python retriver.py
 ```
 
-You can also provide your own sources. URLs, `.pdf`, `.md`, and `.txt` files are supported.
+Use custom sources
 
 ```bash
-python retriver.py https://example.com/post ./notes.md ./paper.pdf
+python retriver.py notes.md paper.pdf https://example.com
 ```
 
-Run the main RAG workflow:
+Run Recall
 
 ```bash
 python main.py
 ```
 
-Ask a custom question:
+Ask a question
 
 ```bash
-python main.py "What is task decomposition in LLM agents?"
+python main.py "Explain task decomposition."
 ```
 
-Inspect chunking without rebuilding Chroma:
+Inspect chunking
 
 ```bash
 python ingest.py
 ```
 
-Test the OpenRouter debug path:
+---
 
-```bash
-python debug_openrouter.py
+# Why Corrective RAG?
+
+Traditional Retrieval-Augmented Generation follows a simple pipeline:
+
+```
+Question
+     ↓
+Retrieve
+     ↓
+Generate
 ```
 
-## Notes
+Poor retrieval often leads directly to hallucinations.
 
-- `chroma_db/` is generated data and can be safely deleted and rebuilt.
-- The sample workflow uses Ollama locally by default, so no external API key is required for the main path.
-- `retriver.py` is the canonical rebuild script name in this repository, even though the spelling is historical.
-- `debug_openrouter.py` and `agent.py` are exploratory scripts; they are not part of the main RAG flow.
+Recall introduces a corrective stage:
 
-> [!IMPORTANT]
-> The first ingest run can take longer than later runs because embedding weights may need to download and the vector store is rebuilt from scratch.
+```
+Question
+     ↓
+Retrieve
+     ↓
+Grade
+ ┌────┴────┐
+ │         │
+Good     Poor
+ │         │
+ ▼         ▼
+Generate Rewrite
+           │
+           ▼
+      Retrieve Again
+```
+
+This iterative process significantly improves answer reliability by ensuring generation is based on stronger evidence.
+
+---
+
+# Current Limitations
+
+- Single-user local deployment
+- No web interface
+- No hybrid search
+- No reranking model
+- No streaming responses
+
+---
+
+# Roadmap
+
+- [ ] Hybrid BM25 + Dense Retrieval
+- [ ] Cross-encoder reranking
+- [ ] Streaming generation
+- [ ] Web UI
+- [ ] Multi-document collections
+- [ ] Citation support
+- [ ] Agentic retrieval
+- [ ] Knowledge graph integration
+
+---
+
+# License
+
+This project is released under the MIT License.
