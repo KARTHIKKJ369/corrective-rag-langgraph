@@ -1,8 +1,8 @@
-# Recall
+# LCRAG
 
 > A local-first implementation of **Corrective Retrieval-Augmented Generation (CRAG)** powered by **LangGraph, ChromaDB, and Ollama**.
 
-Recall is an experimental AI retrieval system that improves traditional Retrieval-Augmented Generation by **evaluating retrieved context before generation**. Instead of blindly passing retrieved documents to the language model, Recall introduces a corrective feedback loop that grades document relevance, rewrites weak queries, and retries retrieval until sufficient evidence is collected.
+LCRAG is an experimental AI retrieval system that improves traditional Retrieval-Augmented Generation by **evaluating retrieved context before generation**. Instead of blindly passing retrieved documents to the language model, Recall introduces a corrective feedback loop that grades document relevance, rewrites weak queries, and retries retrieval until sufficient evidence is collected.
 
 Everything runs locally using Ollama and ChromaDB, making Recall suitable for privacy-focused AI applications, research, and experimentation.
 
